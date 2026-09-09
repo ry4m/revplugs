@@ -1,5 +1,5 @@
 {
-  "name": "CustomVoiceMessage",
+  "name": "CustomVoiceMessage.",
   "description": "automatically formats attached voice-message.ogg files as discord voice messages",
   "authors": [
     {
