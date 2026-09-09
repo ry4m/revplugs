@@ -1,69 +1,80 @@
-import { patcher } from "@vendetta";
-import { findByProps, findByName } from "@vendetta/metro";
-import React from "react";
-import VoiceButton from "./components/VoiceButton";
+import { findByProps } from "@vendetta/metro";
+import { before } from "@vendetta/patcher";
+import { storage } from "@vendetta/plugin";
+import { React } from "@vendetta/metro/common";
+import { showToast } from "@vendetta/ui/toasts";
 
-const uploadModule = findByProps("uploadFiles", "uploadLocalFiles");
-const ChatInput = findByProps("ChatInput") || findByName("ChatInput");
+const MessageActions = findByProps("sendMessage", "editMessage");
+const Forms = findByProps("FormSwitch", "FormRow");
 
-let unpatches: Function[] = [];
+const IS_VOICE_MESSAGE_FLAG = 8192;
 
-const DEFAULT_WAVEFORM = "AAAAAAYGBg4ODh4eHj4+PkBAQEhISEpKSk5OTlBCQkJAMzMz";
-const VOICE_MESSAGE_FLAG = 1 << 13;
+storage.voiceModeEnabled ??= false;
+storage.fakeDurationSecs ??= 5;
+
+function buildFakeWaveform(points = 100): string {
+    const bytes = new Uint8Array(points);
+    for (let i = 0; i < points; i++) {
+        bytes[i] = Math.floor(128 + 100 * Math.sin(i / 4));
+    }
+    let binary = "";
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    return btoa(binary);
+}
+
+let unpatch: (() => void) | null = null;
 
 export default {
-  onLoad: () => {
-    if (uploadModule) {
-      const uploadPatch = patcher.before("uploadFiles", uploadModule, (args) => {
-        const [uploadData] = args;
-        if (!uploadData || !uploadData.uploads) return;
+    onLoad() {
+        unpatch = before("sendMessage", MessageActions, (args: any[]) => {
+            if (!storage.voiceModeEnabled) return;
 
-        let isVoice = false;
+            const message = args.find(
+                (a) => a && typeof a === "object" && Array.isArray(a.attachments)
+            );
 
-        for (const file of uploadData.uploads) {
-          const filename = file.filename || file.name || file.item?.filename;
-
-          if (filename && filename.toLowerCase() === "voice-message.ogg") {
-            isVoice = true;
-
-            file.mimeType = "audio/ogg";
-            file.waveform = file.waveform || DEFAULT_WAVEFORM;
-            file.duration_secs = file.duration_secs || 3.0;
-
-            if (file.item) {
-              file.item.mimeType = "audio/ogg";
-              file.item.waveform = file.item.waveform || DEFAULT_WAVEFORM;
-              file.item.duration_secs = file.item.duration_secs || 3.0;
+            if (!message || message.attachments.length !== 1) {
+                showToast(
+                    "Voice mode is on, but the message needs exactly one attachment and no text."
+                );
+                return;
             }
-          }
-        }
 
-        if (isVoice && uploadData.parsedMessage) {
-          uploadData.parsedMessage.flags = (uploadData.parsedMessage.flags || 0) | VOICE_MESSAGE_FLAG;
-        }
-      });
+            const attachment = message.attachments[0];
 
-      unpatches.push(uploadPatch);
+            message.content = "";
+            attachment.filename = "voice-message.ogg";
+            attachment.content_type = "audio/ogg";
+            attachment.waveform = buildFakeWaveform();
+            attachment.duration_secs = Number(storage.fakeDurationSecs) || 5;
+            message.flags = (message.flags || 0) | IS_VOICE_MESSAGE_FLAG;
+
+            storage.voiceModeEnabled = false;
+            showToast("Sending as a voice message...");
+        });
+    },
+
+    onUnload() {
+        unpatch?.();
+    },
+
+    settings: () => {
+        if (!Forms?.FormSwitch || !Forms?.FormRow) return null;
+
+        return React.createElement(
+            React.Fragment,
+            null,
+            React.createElement(Forms.FormRow, {
+                label: "Convert next attachment to Voice Message",
+                subLabel:
+                    "Turns off automatically after one send. Attach any audio file normally, then hit send.",
+                trailing: React.createElement(Forms.FormSwitch, {
+                    value: storage.voiceModeEnabled,
+                    onValueChange: (v: boolean) => {
+                        storage.voiceModeEnabled = v;
+                    }
+                })
+            })
+        );
     }
-
-    if (ChatInput) {
-      const chatPatch = patcher.after("render", ChatInput.prototype, (_, ret) => {
-        try {
-          const children = ret?.props?.children;
-          if (Array.isArray(children)) {
-            children.push(React.createElement(VoiceButton));
-          }
-        } catch {}
-      });
-
-      unpatches.push(chatPatch);
-    }
-  },
-
-  onUnload: () => {
-    for (const unpatch of unpatches) {
-      unpatch();
-    }
-    unpatches = [];
-  }
 };
