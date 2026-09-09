@@ -1,0 +1,14 @@
+{
+  "name": "CustomVoiceMessage",
+  "description": "automatically formats attached voice-message.ogg files as discord voice messages",
+  "authors": [
+    {
+      "name": "ase",
+      "id": "714427961327222826"
+    }
+  ],
+  "main": "src/index.ts",
+  "vendetta": {
+    "icon": "ic_mic_24px"
+  }
+}
