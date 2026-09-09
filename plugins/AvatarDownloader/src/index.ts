@@ -8,11 +8,23 @@ import { showToast } from "@vendetta/ui/toasts";
 const ActionSheet = findByProps("openLazy", "hideActionSheet");
 const { ActionSheetRow } = findByProps("ActionSheetRow");
 
+const Linking = findByProps("openURL", "canOpenURL");
+
 const RNFS =
     findByProps("downloadFile", "DocumentDirectoryPath") ??
-    findByProps("downloadFile", "CachesDirectoryPath");
+    findByProps("downloadFile", "CachesDirectoryPath") ??
+    findByProps("downloadFile");
 
-const CameraRoll = findByProps("save", "getPhotos") ?? findByProps("saveToCameraRoll");
+const CameraRoll =
+    findByProps("save", "getPhotos") ??
+    findByProps("saveToCameraRoll") ??
+    findByProps("saveAsync") ??
+    findByProps("saveImageToGallery");
+
+const MediaManager =
+    findByProps("downloadMedia") ??
+    findByProps("saveFileToGallery") ??
+    findByProps("saveImage");
 
 const DownloadIcon =
     getAssetIDByName("ic_download") ??
@@ -26,10 +38,8 @@ function getAvatarURL(author: any): string | null {
 
     if (typeof author.getAvatarURL === "function") {
         try {
-            return author.getAvatarURL(false, 512, true); // no-animation-restriction, size, canAnimate
-        } catch {
-        	
-        }
+            return author.getAvatarURL(false, 512, true);
+        } catch {}
     }
 
     if (author.avatar && author.id) {
@@ -40,35 +50,110 @@ function getAvatarURL(author: any): string | null {
     return null;
 }
 
+async function tryCameraRoll(url: string): Promise<boolean> {
+    if (!CameraRoll) return false;
+
+    try {
+        if (typeof CameraRoll.save === "function") {
+            await CameraRoll.save(url, { type: "photo" });
+            return true;
+        }
+        if (typeof CameraRoll.saveToCameraRoll === "function") {
+            await CameraRoll.saveToCameraRoll(url, "photo");
+            return true;
+        }
+        if (typeof CameraRoll.saveAsync === "function") {
+            await CameraRoll.saveAsync(url);
+            return true;
+        }
+        if (typeof CameraRoll.saveImageToGallery === "function") {
+            await CameraRoll.saveImageToGallery(url);
+            return true;
+        }
+    } catch (e) {
+        console.error("[DownloadUserAvatar] CameraRoll attempt failed:", e);
+    }
+
+    return false;
+}
+
+async function tryMediaManager(url: string, fileName: string): Promise<boolean> {
+    if (!MediaManager) return false;
+
+    try {
+        if (typeof MediaManager.downloadMedia === "function") {
+            await MediaManager.downloadMedia(url, fileName);
+            return true;
+        }
+        if (typeof MediaManager.saveFileToGallery === "function") {
+            await MediaManager.saveFileToGallery(url, fileName);
+            return true;
+        }
+        if (typeof MediaManager.saveImage === "function") {
+            await MediaManager.saveImage(url);
+            return true;
+        }
+    } catch (e) {
+        console.error("[DownloadUserAvatar] MediaManager attempt failed:", e);
+    }
+
+    return false;
+}
+
+async function tryRNFS(url: string, fileName: string): Promise<boolean> {
+    if (!RNFS || typeof RNFS.downloadFile !== "function") return false;
+
+    const baseDir =
+        RNFS.CachesDirectoryPath ??
+        RNFS.DocumentDirectoryPath ??
+        RNFS.TemporaryDirectoryPath;
+
+    if (!baseDir) return false;
+
+    const destPath = `${baseDir}/${fileName}`;
+
+    try {
+        const result = RNFS.downloadFile({ fromUrl: url, toFile: destPath });
+        const promise = result?.promise ?? result;
+        await promise;
+
+        const saved = await tryCameraRoll(`file://${destPath}`);
+        if (!saved) {
+            showToast(`Downloaded to app storage: ${destPath}`);
+        }
+        return true;
+    } catch (e) {
+        console.error("[DownloadUserAvatar] RNFS attempt failed:", e);
+        return false;
+    }
+}
+
 async function downloadAvatar(url: string, username: string) {
-    if (!RNFS) {
-        showToast("Couldn't find a file system module to download with.");
-        console.error("[DownloadUserAvatar] No RNFS-like module found.");
+    const ext = url.includes(".gif") ? "gif" : "png";
+    const fileName = `${username}_avatar_${Date.now()}.${ext}`;
+
+    if (await tryCameraRoll(url)) {
+        showToast(`Saved ${username}'s avatar to your gallery.`);
         return;
     }
 
-    const ext = url.includes(".gif") ? "gif" : "png";
-    const fileName = `${username}_avatar_${Date.now()}.${ext}`;
-    const destPath = `${RNFS.CachesDirectoryPath ?? RNFS.DocumentDirectoryPath}/${fileName}`;
-
-    try {
-        const { promise } = RNFS.downloadFile({
-            fromUrl: url,
-            toFile: destPath
-        });
-
-        await promise;
-
-        if (CameraRoll?.save) {
-            await CameraRoll.save(`file://${destPath}`, { type: "photo" });
-            showToast(`Saved ${username}'s avatar to your gallery.`);
-        } else {
-            showToast(`Downloaded ${username}'s avatar to app storage.`);
-        }
-    } catch (e) {
-        console.error("[DownloadUserAvatar] Download failed:", e);
-        showToast("Failed to download avatar.");
+    if (await tryMediaManager(url, fileName)) {
+        showToast(`Saved ${username}'s avatar.`);
+        return;
     }
+
+    if (await tryRNFS(url, fileName)) {
+        showToast(`Saved ${username}'s avatar.`);
+        return;
+    }
+
+    if (Linking?.openURL) {
+        showToast("No download module found, opening in browser instead.");
+        Linking.openURL(url);
+        return;
+    }
+
+    showToast("Couldn't find any way to download or open the avatar.");
 }
 
 export default {
@@ -167,3 +252,4 @@ export default {
         unpatches = [];
     }
 };
+            
