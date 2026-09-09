@@ -23,17 +23,15 @@ jobs:
 
       - name: Install deps
         run: |
-          cat >> pnpm-workspace.yaml <<'EOF'
-
-onlyBuiltDependencies:
-  - "@swc/core"
-  - "esbuild"
-EOF
-
+          printf "\nonlyBuiltDependencies:\n  - '@swc/core'\n  - 'esbuild'\n" >> pnpm-workspace.yaml
           pnpm install --no-frozen-lockfile
 
       - name: Build plugin(s)
         run: node ./build.mjs
+
+      - name: Prepare deployment
+        run: |
+          if [ -f README.md ]; then cp README.md dist/README.md; fi
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
