@@ -1,6 +1,7 @@
 {
-  "name": "CustomVoiceMessage.",
-  "description": "automatically formats attached voice-message.ogg files as discord voice messages",
+  "name": "CustomVoiceMessage",
+  "version": "1.67",
+  "description": "allows you to send custom voice messages.",
   "authors": [
     {
       "name": "ase",
