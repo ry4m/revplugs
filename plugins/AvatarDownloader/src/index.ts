@@ -3,51 +3,72 @@ import { before, after } from "@vendetta/patcher";
 import { React } from "@vendetta/metro/common";
 import { findInReactTree } from "@vendetta/utils";
 import { getAssetIDByName } from "@vendetta/ui/assets";
+import { showToast } from "@vendetta/ui/toasts";
 
 const ActionSheet = findByProps("openLazy", "hideActionSheet");
 const { ActionSheetRow } = findByProps("ActionSheetRow");
 
-const ClipboardUtils = findByProps("SUPPORTS_COPY", "copy");
-const ToastPresets = findByProps("presentCopiedToClipboard");
-const NativeLinking = findByProps("openURL", "canOpenURL");
+const RNFS =
+    findByProps("downloadFile", "DocumentDirectoryPath") ??
+    findByProps("downloadFile", "CachesDirectoryPath");
+
+const CameraRoll = findByProps("save", "getPhotos") ?? findByProps("saveToCameraRoll");
 
 const DownloadIcon =
-    getAssetIDByName("ic_download_24px") ??
+    getAssetIDByName("ic_download") ??
     getAssetIDByName("DownloadIcon") ??
-    getAssetIDByName("download");
+    getAssetIDByName("ic_file_download");
 
 let unpatches: (() => void)[] = [];
 
-function getAvatarUrl(author: any): string | null {
-    if (!author?.id) return null;
-    if (author.avatar) {
-        const isAnimated = author.avatar.startsWith("a_");
-        const ext = isAnimated ? "gif" : "png";
-        return `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.${ext}?size=1024`;
+function getAvatarURL(author: any): string | null {
+    if (!author) return null;
+
+    if (typeof author.getAvatarURL === "function") {
+        try {
+            return author.getAvatarURL(false, 512, true); // no-animation-restriction, size, canAnimate
+        } catch {
+        	
+        }
     }
-    const defaultIndex = Number((BigInt(author.id) >> 22n) % 6n);
-    return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+
+    if (author.avatar && author.id) {
+        const ext = author.avatar.startsWith("a_") ? "gif" : "png";
+        return `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.${ext}?size=512`;
+    }
+
+    return null;
 }
 
-function handleAvatarDownload(author: any) {
-    const avatarUrl = getAvatarUrl(author);
-    if (!avatarUrl) return;
+async function downloadAvatar(url: string, username: string) {
+    if (!RNFS) {
+        showToast("Couldn't find a file system module to download with.");
+        console.error("[DownloadUserAvatar] No RNFS-like module found.");
+        return;
+    }
+
+    const ext = url.includes(".gif") ? "gif" : "png";
+    const fileName = `${username}_avatar_${Date.now()}.${ext}`;
+    const destPath = `${RNFS.CachesDirectoryPath ?? RNFS.DocumentDirectoryPath}/${fileName}`;
 
     try {
-        if (ClipboardUtils?.copy) {
-            ClipboardUtils.copy(avatarUrl);
-        } else if (ClipboardUtils?.copyToClipboard) {
-            ClipboardUtils.copyToClipboard(avatarUrl);
+        const { promise } = RNFS.downloadFile({
+            fromUrl: url,
+            toFile: destPath
+        });
+
+        await promise;
+
+        if (CameraRoll?.save) {
+            await CameraRoll.save(`file://${destPath}`, { type: "photo" });
+            showToast(`Saved ${username}'s avatar to your gallery.`);
+        } else {
+            showToast(`Downloaded ${username}'s avatar to app storage.`);
         }
     } catch (e) {
-        console.error("[AvatarDownloader] Copy failed:", e);
+        console.error("[DownloadUserAvatar] Download failed:", e);
+        showToast("Failed to download avatar.");
     }
-
-    if (NativeLinking?.openURL) {
-        NativeLinking.openURL(avatarUrl).catch(() => {});
-    }
-
-    ToastPresets?.presentCopiedToClipboard?.();
 }
 
 export default {
@@ -56,10 +77,7 @@ export default {
             "openLazy",
             ActionSheet,
             ([comp, args, msg]) => {
-                if (
-                    args !== "MessageLongPressActionSheet" ||
-                    !msg?.message
-                ) {
+                if (args !== "MessageLongPressActionSheet" || !msg?.message) {
                     return;
                 }
 
@@ -84,28 +102,35 @@ export default {
 
                             const alreadyExists = findInReactTree(
                                 component,
-                                (c: any) => c?.props?.label === "Save Avatar Link"
+                                (c: any) => c?.props?.label === "Download Avatar"
                             );
                             if (alreadyExists) return;
 
-                            const avatarButton = React.createElement(
+                            const downloadButton = React.createElement(
                                 ActionSheetRow,
                                 {
-                                    label: "Save Avatar Link",
+                                    label: "Download Avatar",
                                     icon: React.createElement(
                                         ActionSheetRow.Icon,
                                         { source: DownloadIcon }
                                     ),
                                     onPress: () => {
-                                        const currentAuthor =
+                                        const author =
                                             instance.__currentActiveMessage?.author;
+                                        const url = getAvatarURL(author);
 
                                         ActionSheet.hideActionSheet();
 
-                                        if (!currentAuthor) return;
+                                        if (!url) {
+                                            showToast("Couldn't resolve an avatar URL.");
+                                            return;
+                                        }
 
                                         setTimeout(() => {
-                                            handleAvatarDownload(currentAuthor);
+                                            downloadAvatar(
+                                                url,
+                                                author?.username ?? "user"
+                                            );
                                         }, 100);
                                     }
                                 }
@@ -113,7 +138,15 @@ export default {
 
                             if (groups?.unshift) {
                                 groups.unshift(
-                                    React.createElement(ActionSheetRow.Group, null, avatarButton)
+                                    React.createElement(
+                                        ActionSheetRow.Group,
+                                        null,
+                                        downloadButton
+                                    )
+                                );
+                            } else {
+                                console.log(
+                                    "[DownloadUserAvatar] Could not insert button - skipping"
                                 );
                             }
                         }
