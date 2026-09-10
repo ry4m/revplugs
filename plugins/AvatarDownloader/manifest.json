@@ -1,7 +1,6 @@
 {
-  "name": "Avatar Downloader",
-  "version": "1.69.67",
-  "description": "CAN WE HURRY UP",
+  "name": "AvatarDownloader",
+  "description": "download user avatars",
   "authors": [
     {
       "name": "ase",
@@ -9,7 +8,8 @@
     }
   ],
   "main": "src/index.ts",
+  "version": "1.69.0",
   "vendetta": {
-    "icon": "ic_download_24px"
+    "icon": "ic_profile_24px"
   }
 }
