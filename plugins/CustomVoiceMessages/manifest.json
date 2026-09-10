@@ -1,6 +1,6 @@
 {
-  "name": "SendAsVoiceMessage",
-  "description": "WORKK",
+  "name": "CustomVoiceMessages",
+  "description": "pls",
   "authors": [
     {
       "name": "ase",
@@ -9,6 +9,6 @@
   ],
   "main": "src/index.ts",
   "vendetta": {
-    "icon": "ic_mic_24px"
+    "icon": "ic_notification_24px"
   }
 }
