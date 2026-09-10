@@ -1,3 +1,4 @@
+// inspired from fshinz's copy user id, huge thank youu to them, this plugin used to work on vendetta so i just optimized it to work on revenge
 import { findByProps } from "@vendetta/metro";
 import { before, after } from "@vendetta/patcher";
 import { React } from "@vendetta/metro/common";
@@ -29,7 +30,7 @@ const MediaManager =
 const DownloadIcon =
     getAssetIDByName("ic_download") ??
     getAssetIDByName("DownloadIcon") ??
-    getAssetIDByName("ic_file_download");
+    getAssetIDByName("ic_file_download"
 
 let unpatches: (() => void)[] = [];
 
