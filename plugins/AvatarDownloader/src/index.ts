@@ -30,7 +30,7 @@ const MediaManager =
 const DownloadIcon =
     getAssetIDByName("ic_download") ??
     getAssetIDByName("DownloadIcon") ??
-    getAssetIDByName("ic_file_download"
+    getAssetIDByName("ic_file_download") ??
 
 let unpatches: (() => void)[] = [];
 
