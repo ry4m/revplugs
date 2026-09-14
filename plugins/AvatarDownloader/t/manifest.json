@@ -1,0 +1,15 @@
+{
+  "name": "t",
+  "description": "t",
+  "authors": [
+    {
+      "name": "ase",
+      "id": "714427961327222826"
+    }
+  ],
+  "main": "src/index.ts",
+  "version": "1.69.0",
+  "vendetta": {
+    "icon": "ic_profile_24px"
+  }
+}
