@@ -25,16 +25,17 @@ function tryPatch(propNames: string[]) {
     const targetProp = propNames[0];
     if (typeof mod[targetProp] !== "function") return;
 
-    console.log(`[NitroPreviewButton] Found and patching: ${targetProp}`);
+    showToast(`Found candidate: ${targetProp}`);
 
     const unpatch = after(targetProp, mod, (_args: any[], result: any) => {
         if (!storage.previewModeEnabled) return result;
-        if (typeof result === "boolean") return true;
 
-        console.log(
-            `[NitroPreviewButton] ${targetProp} returned non-boolean:`,
-            JSON.stringify(result)
-        );
+        if (typeof result === "boolean") {
+            showToast(`${targetProp} called, returned boolean, forcing true`);
+            return true;
+        }
+
+        showToast(`${targetProp} called, returned non-boolean: ${JSON.stringify(result).slice(0, 80)}`);
         return result;
     });
 
@@ -46,9 +47,7 @@ export default {
         CANDIDATES.forEach((propNames) => tryPatch(propNames as string[]));
 
         if (!unpatches.length) {
-            showToast(
-                "No premium-check function matched. Check logs, none of the candidates resolved."
-            );
+            showToast("No premium-check function matched any candidate.");
         } else {
             showToast(`Patched ${unpatches.length} premium-check function(s).`);
         }
