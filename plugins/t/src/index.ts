@@ -3,6 +3,8 @@ import { after } from "@vendetta/patcher";
 import { storage } from "@vendetta/plugin";
 import { showToast } from "@vendetta/ui/toasts";
 
+const ClipboardUtils = findByProps("SUPPORTS_COPY", "copy") ?? findByProps("copyToClipboard");
+
 storage.previewModeEnabled ??= true;
 
 const CANDIDATES: [string, string?][] = [
@@ -17,6 +19,14 @@ const CANDIDATES: [string, string?][] = [
 ];
 
 let unpatches: (() => void)[] = [];
+const matchedNames: string[] = [];
+const callLog: string[] = [];
+
+function safeCopy(text: string) {
+    try {
+        ClipboardUtils?.copy?.(text) ?? ClipboardUtils?.copyToClipboard?.(text);
+    } catch {}
+}
 
 function tryPatch(propNames: string[]) {
     const mod = findByProps(...propNames);
@@ -25,17 +35,17 @@ function tryPatch(propNames: string[]) {
     const targetProp = propNames[0];
     if (typeof mod[targetProp] !== "function") return;
 
-    showToast(`Found candidate: ${targetProp}`);
+    matchedNames.push(targetProp);
 
     const unpatch = after(targetProp, mod, (_args: any[], result: any) => {
         if (!storage.previewModeEnabled) return result;
 
-        if (typeof result === "boolean") {
-            showToast(`${targetProp} called, returned boolean, forcing true`);
-            return true;
-        }
+        const entry = `${targetProp} -> ${typeof result === "boolean" ? result : JSON.stringify(result)?.slice(0, 60)}`;
+        callLog.push(entry);
+        safeCopy(callLog.join("\n"));
+        showToast(`Called: ${entry}`);
 
-        showToast(`${targetProp} called, returned non-boolean: ${JSON.stringify(result).slice(0, 80)}`);
+        if (typeof result === "boolean") return true;
         return result;
     });
 
@@ -46,11 +56,12 @@ export default {
     onLoad() {
         CANDIDATES.forEach((propNames) => tryPatch(propNames as string[]));
 
-        if (!unpatches.length) {
-            showToast("No premium-check function matched any candidate.");
-        } else {
-            showToast(`Patched ${unpatches.length} premium-check function(s).`);
-        }
+        const summary = matchedNames.length
+            ? `Matched: ${matchedNames.join(", ")}`
+            : "No premium-check function matched any candidate.";
+
+        safeCopy(summary);
+        showToast(summary);
     },
 
     onUnload() {
@@ -58,5 +69,7 @@ export default {
             unpatch?.();
         }
         unpatches = [];
+        matchedNames.length = 0;
+        callLog.length = 0;
     }
 };
